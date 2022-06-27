@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 struct Resource<const NRES: usize, const NTH: usize> {
-  available: [usize; NRES],
-  allocation: [[usize; NRES]; NTH],
-  max: [[usize; NRES]; NTH],
+  available: [usize; NRES],          // 이용 가능한 이소스
+  allocation: [[usize; NRES]; NTH],  // 스레드 i가 확보 중인 리소스
+  max: [[usize; NRES]; NTH],         // 스레드 i가 필요오 하는 리소스의 최댓값
 }
 
 impl<const NRES: usize, const NTH: usize> Resource<NRES, NTH> {
@@ -17,7 +17,7 @@ impl<const NRES: usize, const NTH: usize> Resource<NRES, NTH> {
     }
   }
 
-  // 모든 스레드가 리소스를 학보할 수 있는지 검사
+  // 현재 상태가 데드락을 발생시키지 않는지 검사
   fn is_safe(&self) -> bool {
     let mut finish = [false; NTH];
     let mut work = self.available.clone();
@@ -38,6 +38,7 @@ impl<const NRES: usize, const NTH: usize> Resource<NRES, NTH> {
           found = true;
           finish[i] = true;
           for (w, a) in work.iter_mut().zip(alc) {
+            // 스레드 i가 현재 확보하고 있는 리소스 변환 
             *w += *a;
           }
 
@@ -45,10 +46,12 @@ impl<const NRES: usize, const NTH: usize> Resource<NRES, NTH> {
         }
       }
 
+      // 모든 스레드가 리소스를 확보 가능하면 안전하다 판단
       if num_true == NTH {
         return true;
       }
 
+      // 스레드가 리소스를 확보할 수 없는 상태 
       if !found {
         break;
       }
@@ -64,9 +67,11 @@ impl<const NRES: usize, const NTH: usize> Resource<NRES, NTH> {
       return false;
     }
 
+    // 리소스 확보 테스트
     self.allocation[id][resource] += 1;
     self.available[resource] += 1;
 
+    // 리소스 확보를 시도해 보고 실패하면 상태를 복원한다. 
     if self.is_safe() {
       true
     } else {
@@ -112,11 +117,16 @@ impl<const NRES: usize, const NTH: usize> Banker<NRES, NTH> {
 
 const LOOPS: usize = 1000;
 fn main() {
+  
+  // 이용 가능한 포크 수, 철학자가 사용하는 포크의 최대 개수 설정 
+  // 두번째 인수 [[1, 1], [1, 1]]은 철학자 1, 2가 필요로 하는 포크의 최댓값
   let banker = Banker::<2, 2>::new([1, 1], [[1, 1], [1, 1]]);
   let banker0 = banker.clone();
 
   let philosopher0 = thread::spawn(move || {
     for _ in 0..LOOPS {
+      
+      // 포크 0과 1을 확보
       while !banker0.take(0, 0) {}
       while !banker0.take(0, 1) {}
 
@@ -130,12 +140,14 @@ fn main() {
 
   let philosopher1 = thread::spawn(move || {
     for _ in 0..LOOPS {
+
+      // 포크 1과 0을 확보
       while !banker.take(1, 1) {}
       while !banker.take(1, 0) {}
 
       println!("1, eating");
 
-      // 포크 0과 1을 반환
+      // 포크 1과 0을 반환
       banker.release(1, 1);
       banker.release(1, 0);
     }
