@@ -1,2 +1,2 @@
 # concurrency
-dependency free concurrent
+For study purpose
